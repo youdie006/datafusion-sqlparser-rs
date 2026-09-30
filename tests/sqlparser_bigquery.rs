@@ -2984,3 +2984,31 @@ fn test_byte_and_raw_string_quote_escaping() {
         err
     );
 }
+
+#[test]
+fn parse_raw_string_with_escaped_quote() {
+    // A backslash keeps the quote inside a raw string and both characters are preserved.
+    let select =
+        bigquery().verified_only_select(r#"SELECT R'a\'b', R"a\"b", R'''a\'''b''', R"""a\"""b""""#);
+    assert_eq!(
+        &Expr::Value(Value::SingleQuotedRawStringLiteral(r"a\'b".to_string()).with_empty_span()),
+        expr_from_projection(&select.projection[0])
+    );
+    assert_eq!(
+        &Expr::Value(
+            Value::TripleSingleQuotedRawStringLiteral(r"a\'''b".to_string()).with_empty_span()
+        ),
+        expr_from_projection(&select.projection[2])
+    );
+    bigquery().verified_stmt(r"SELECT R'a\\'");
+
+    let err = bigquery()
+        .parse_sql_statements(r"SELECT R'a\'")
+        .unwrap_err();
+    assert_eq!(
+        ParserError::TokenizerError(
+            "Unterminated string literal at Line: 1, Column: 10".to_string()
+        ),
+        err
+    );
+}

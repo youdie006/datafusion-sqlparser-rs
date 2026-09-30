@@ -857,6 +857,8 @@ struct TokenizeQuotedStringSettings {
     /// True if the string uses backslash escaping of special characters
     /// e.g `'abc\ndef\'ghi'
     backslash_escape: bool,
+    /// True if backslash escapes are kept verbatim, as in raw strings
+    raw: bool,
 }
 
 /// SQL Tokenizer
@@ -1087,6 +1089,7 @@ impl<'a> Tokenizer<'a> {
                                         chars,
                                         '\'',
                                         false,
+                                        false,
                                         Token::SingleQuotedByteStringLiteral,
                                         Token::TripleSingleQuotedByteStringLiteral,
                                     );
@@ -1100,6 +1103,7 @@ impl<'a> Tokenizer<'a> {
                                     .tokenize_single_or_triple_quoted_string::<fn(String) -> Token>(
                                         chars,
                                         '"',
+                                        false,
                                         false,
                                         Token::DoubleQuotedByteStringLiteral,
                                         Token::TripleDoubleQuotedByteStringLiteral,
@@ -1123,7 +1127,8 @@ impl<'a> Tokenizer<'a> {
                             .tokenize_single_or_triple_quoted_string::<fn(String) -> Token>(
                                 chars,
                                 '\'',
-                                false,
+                                self.dialect.supports_string_literal_backslash_escape(),
+                                true,
                                 Token::SingleQuotedRawStringLiteral,
                                 Token::TripleSingleQuotedRawStringLiteral,
                             ),
@@ -1131,7 +1136,8 @@ impl<'a> Tokenizer<'a> {
                             .tokenize_single_or_triple_quoted_string::<fn(String) -> Token>(
                                 chars,
                                 '"',
-                                false,
+                                self.dialect.supports_string_literal_backslash_escape(),
+                                true,
                                 Token::DoubleQuotedRawStringLiteral,
                                 Token::TripleDoubleQuotedRawStringLiteral,
                             ),
@@ -1242,6 +1248,7 @@ impl<'a> Tokenizer<'a> {
                                 chars,
                                 '\'',
                                 self.dialect.supports_string_literal_backslash_escape(),
+                                false,
                                 Token::SingleQuotedString,
                                 Token::TripleSingleQuotedString,
                             );
@@ -1264,6 +1271,7 @@ impl<'a> Tokenizer<'a> {
                                 chars,
                                 '"',
                                 self.dialect.supports_string_literal_backslash_escape(),
+                                false,
                                 Token::DoubleQuotedString,
                                 Token::TripleDoubleQuotedString,
                             );
@@ -2131,6 +2139,7 @@ impl<'a> Tokenizer<'a> {
         chars: &mut State,
         quote_style: char,
         backslash_escape: bool,
+        raw: bool,
         single_quote_token: F,
         triple_quote_token: F,
     ) -> Result<Option<Token>, TokenizerError>
@@ -2174,6 +2183,7 @@ impl<'a> Tokenizer<'a> {
             num_quote_chars,
             num_opening_quotes_to_consume: 0,
             backslash_escape,
+            raw,
         };
 
         self.tokenize_quoted_string(chars, settings)
@@ -2195,6 +2205,7 @@ impl<'a> Tokenizer<'a> {
                 num_quote_chars: NumStringQuoteChars::One,
                 num_opening_quotes_to_consume: 1,
                 backslash_escape,
+                raw: false,
             },
         )
     }
@@ -2319,6 +2330,7 @@ impl<'a> Tokenizer<'a> {
 
                     if let Some(next) = chars.peek() {
                         if !self.unescape
+                            || settings.raw
                             || (self.dialect.ignores_wildcard_escapes()
                                 && (*next == '%' || *next == '_'))
                         {
